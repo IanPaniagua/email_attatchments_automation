@@ -28,15 +28,6 @@ class NewMailHandler:
 # Ask if Outlook is in English or German
 language = input("Is your Outlook in English or German? (Enter 'E' for English, 'G' for German): ").strip().lower()
 
-# Determine folder name based on language
-if language == 'g':
-    inbox_folder_name = "Posteingang"
-elif language == 'e':
-    inbox_folder_name = "Inbox"
-else:
-    print("Invalid language selection. Exiting.")
-    exit()
-
 # Connect to Outlook
 outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
 
@@ -77,14 +68,16 @@ def find_folder(folders, name):
                 return found_folder
     return None
 
-# Find the Inbox folder based on the selected language
-selected_folder = find_folder(selected_account.Folders, inbox_folder_name)
-
-if selected_folder:
-    print(f"Selected folder: {selected_folder.Name}")
-else:
-    print(f"Folder '{inbox_folder_name}' not found. Exiting.")
-    exit()
+# Ask the user to enter the name of the folder they want to use, and validate it
+while True:
+    folder_name = input("Enter the name of the folder you want to use: ").strip()
+    selected_folder = find_folder(selected_account.Folders, folder_name)
+    
+    if selected_folder:
+        print(f"Selected folder: {selected_folder.Name}")
+        break
+    else:
+        print(f"Folder '{folder_name}' not found. Please enter a valid folder name.")
 
 # Set up the output folder for PDFs
 re_dir = Path(r"C:\Users\MaxEDV\Desktop\re_")

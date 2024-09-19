@@ -25,18 +25,6 @@ class NewMailHandler:
         except Exception as e:
             print(f"Error processing new email: {e}")
 
-# Ask if Outlook is in English or German
-language = input("Is your Outlook in English or German? (Enter 'E' for English, 'G' for German): ").strip().lower()
-
-# Determine folder name based on language
-if language == 'g':
-    inbox_folder_name = "Posteingang"
-elif language == 'e':
-    inbox_folder_name = "Inbox"
-else:
-    print("Invalid language selection. Exiting.")
-    exit()
-
 # Connect to Outlook
 outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
 
@@ -77,7 +65,11 @@ def find_folder(folders, name):
                 return found_folder
     return None
 
-# Find the Inbox folder based on the selected language
+# Default folder names
+inbox_folder_name = "Posteingang"  # For German
+# inbox_folder_name = "Inbox"  # Uncomment for English
+
+# Find the Inbox folder
 selected_folder = find_folder(selected_account.Folders, inbox_folder_name)
 
 if selected_folder:

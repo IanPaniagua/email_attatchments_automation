@@ -1,5 +1,5 @@
 import win32com.client
-import pythoncom  # Required for COM event handling
+import pythoncom
 from pathlib import Path
 import re
 
@@ -33,45 +33,62 @@ outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
 
 # Get the list of all accounts in Outlook
 accounts = outlook.Folders
-account_names = [account.Name for account in accounts]
+
+# Filter out folders that start with "Öffentliche Ordner" to remove duplicates
+filtered_accounts = [account for account in accounts if not account.Name.startswith("Öffentliche Ordner")]
 
 # Display available accounts and let the user select one
 print("Available accounts:")
-for idx, account_name in enumerate(account_names):
-    print(f"{idx + 1}. {account_name}")
+for idx, account in enumerate(filtered_accounts):
+    print(f"{idx + 1}. {account.Name}")
 
 # Ask the user to select an account by number
-selected_index = int(input("Enter the number of the account you want to use: ")) - 1
-selected_account = accounts[selected_index]
-
-# Determine the name of the inbox folder
-if language == 'e':
-    inbox_name = "Inbox"
-elif language == 'g':
-    inbox_name = "Posteingang"
-else:
-    print("Invalid input. Please enter 'E' for English or 'G' for German.")
-    exit()
-
-# Try to access the 'Inbox' or 'Posteingang' folder
 try:
-    inbox = selected_account.Folders[inbox_name]
-    print(f"Connected to {selected_account.Name} - {inbox_name}")
-except Exception as e:
-    print(f"Error: Could not find the folder '{inbox_name}' for {selected_account.Name}.")
-    print(f"Exception: {e}")
+    selected_index = int(input("Enter the number of the account you want to use: ")) - 1
+    if selected_index < 0 or selected_index >= len(filtered_accounts):
+        raise ValueError("Invalid account number.")
+    selected_account = filtered_accounts[selected_index]
+except (ValueError, IndexError) as e:
+    print(f"Error: {e}")
     exit()
+
+# Print the selected account for debugging
+print(f"Selected account: {selected_account.Name}")
+
+# Function to find folder by name, including subfolders
+def find_folder(folders, name):
+    """Find a folder by name, including subfolders."""
+    for folder in folders:
+        if folder.Name.lower() == name.lower():
+            return folder
+        # Recursively search in subfolders
+        if folder.Folders.Count > 0:
+            found_folder = find_folder(folder.Folders, name)
+            if found_folder:
+                return found_folder
+    return None
+
+# Ask the user to enter the name of the folder they want to use, and validate it
+while True:
+    folder_name = input("Enter the name of the folder you want to use: ").strip()
+    selected_folder = find_folder(selected_account.Folders, folder_name)
+    
+    if selected_folder:
+        print(f"Selected folder: {selected_folder.Name}")
+        break
+    else:
+        print(f"Folder '{folder_name}' not found. Please enter a valid folder name.")
 
 # Set up the output folder for PDFs
 re_dir = Path(r"C:\Users\MaxEDV\Desktop\re_")
 re_dir.mkdir(parents=True, exist_ok=True)
 
-# Set up the event handler for the Inbox
-items = inbox.Items
+# Set up the event handler for the selected folder
+items = selected_folder.Items
 event_handler = win32com.client.WithEvents(items, NewMailHandler)
 
 # Keep the script running to listen for new emails
-print("Monitoring for new emails...")
+print(f"Monitoring {selected_folder.Name} for new emails...")
 
 # Infinite loop to keep the script running
 while True:

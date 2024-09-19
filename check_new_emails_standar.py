@@ -3,6 +3,10 @@ import pythoncom
 from pathlib import Path
 import re
 
+# Path to the output folder for PDFs
+output_folder = Path("data/re_")
+output_folder.mkdir(parents=True, exist_ok=True)
+
 # Class to handle the new mail event
 class NewMailHandler:
     def OnItemAdd(self, item):
@@ -18,8 +22,12 @@ class NewMailHandler:
                         # Create a safe filename
                         filename = re.sub(r'[^0-9a-zA-Z\.]+', '', attachment.FileName)
 
+                        # Create the full path for saving the PDF
+                        full_path = output_folder / filename
+                        print(f"Saving PDF to: {full_path}")
+
                         # Save the PDF to the folder
-                        attachment.SaveAsFile(re_dir / filename)
+                        attachment.SaveAsFile(full_path)
                         print(f"PDF saved: {filename}")
 
         except Exception as e:
@@ -52,35 +60,27 @@ except (ValueError, IndexError) as e:
 # Print the selected account for debugging
 print(f"Selected account: {selected_account.Name}")
 
-# Function to find folder by name, including subfolders
-def find_folder(folders, name):
-    """Find a folder by name, including subfolders."""
+# Function to find the Inbox folder
+def find_inbox_folder(folders):
+    """Find the Inbox folder by iterating through the folder hierarchy."""
     for folder in folders:
-        if folder.Name.lower() == name.lower():
+        if folder.Name.lower() in ["inbox", "posteingang"]:
             return folder
         # Recursively search in subfolders
         if folder.Folders.Count > 0:
-            found_folder = find_folder(folder.Folders, name)
+            found_folder = find_inbox_folder(folder.Folders)
             if found_folder:
                 return found_folder
     return None
 
-# Default folder names
-inbox_folder_name = "Posteingang"  # For German
-# inbox_folder_name = "Inbox"  # Uncomment for English
-
 # Find the Inbox folder
-selected_folder = find_folder(selected_account.Folders, inbox_folder_name)
+selected_folder = find_inbox_folder(selected_account.Folders)
 
 if selected_folder:
     print(f"Selected folder: {selected_folder.Name}")
 else:
-    print(f"Folder '{inbox_folder_name}' not found. Exiting.")
+    print(f"Folder 'Inbox' not found. Exiting.")
     exit()
-
-# Set up the output folder for PDFs
-re_dir = Path(r"C:\Users\MaxEDV\Desktop\re_")
-re_dir.mkdir(parents=True, exist_ok=True)
 
 # Set up the event handler for the selected folder
 items = selected_folder.Items

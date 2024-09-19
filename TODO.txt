@@ -1,0 +1,1 @@
+[]manage the posibilito that the user can change the folder place after setting, so we have to be able to detect this change, alert the user and offer to choice againg the folder path to sabe the pdf.

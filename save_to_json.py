@@ -3,7 +3,49 @@ import pythoncom
 from pathlib import Path
 import re
 from email_utils import save_email_info  # Import the function to save email info
+import tkinter as tk
+from tkinter import filedialog, messagebox
 
+# Function to open a folder selection dialog and return the selected path
+def select_folder():
+    root = tk.Tk()
+    root.withdraw()  # Hide the root window
+    root.attributes('-topmost', True)  # Ensure the dialog is always on top
+    folder_selected = filedialog.askdirectory(title="Select Folder for Saving PDFs")
+    root.attributes('-topmost', False)  # Remove the topmost attribute
+    if not folder_selected:
+        print("No folder selected. Exiting.")
+        exit()
+    return Path(folder_selected)
+
+# Function to display a list of accounts and let the user select one
+def select_account(accounts):
+    def on_select():
+        selected_idx = listbox.curselection()
+        if selected_idx:
+            selected_account.set(accounts[selected_idx[0]].Name)
+            root.destroy()
+        else:
+            messagebox.showerror("Error", "No account selected.")
+
+    root = tk.Tk()
+    root.title("Select Email Account")
+    root.attributes('-topmost', True)  # Ensure the dialog is always on top
+
+    tk.Label(root, text="Select an email account:").pack(pady=10)
+
+    listbox = tk.Listbox(root, width=50, height=10)
+    listbox.pack(pady=10)
+
+    for account in accounts:
+        listbox.insert(tk.END, account.Name)
+
+    selected_account = tk.StringVar()
+    tk.Button(root, text="Select", command=on_select).pack(pady=10)
+
+    root.mainloop()
+
+    return selected_account.get()
 
 # Class to handle the new mail event
 class NewMailHandler:
@@ -35,7 +77,6 @@ class NewMailHandler:
         except Exception as e:
             print(f"Error processing new email: {e}")
 
-
 # Connect to Outlook
 outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
 
@@ -45,19 +86,14 @@ accounts = outlook.Folders
 # Filter out folders that start with "Öffentliche Ordner" to remove duplicates
 filtered_accounts = [account for account in accounts if not account.Name.startswith("Öffentliche Ordner")]
 
-# Display available accounts and let the user select one
-print("Available accounts:")
-for idx, account in enumerate(filtered_accounts):
-    print(f"{idx + 1}. {account.Name}")
+# Let the user select an account via UI
+selected_account_name = select_account(filtered_accounts)
 
-# Ask the user to select an account by number
-try:
-    selected_index = int(input("Enter the number of the account you want to use: ")) - 1
-    if selected_index < 0 or selected_index >= len(filtered_accounts):
-        raise ValueError("Invalid account number.")
-    selected_account = filtered_accounts[selected_index]
-except (ValueError, IndexError) as e:
-    print(f"Error: {e}")
+# Find the selected account from the filtered accounts
+selected_account = next((account for account in filtered_accounts if account.Name == selected_account_name), None)
+
+if selected_account is None:
+    print(f"Account '{selected_account_name}' not found. Exiting.")
     exit()
 
 # Print the selected account for debugging
@@ -89,9 +125,8 @@ else:
     print(f"Folder '{inbox_folder_name}' not found. Exiting.")
     exit()
 
-# Set up the output folder for PDFs
-re_dir = Path(r"C:\Users\MaxEDV\Desktop\re_")
-re_dir.mkdir(parents=True, exist_ok=True)
+# Let the user select the output folder for PDFs
+re_dir = select_folder()
 
 # Set up the event handler for the selected folder
 items = selected_folder.Items

@@ -10,3 +10,8 @@ Output/
 testing.py
 
 email_info.json
+email_info.xlsx
+
+build/
+dist/
+*.spec

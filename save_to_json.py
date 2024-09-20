@@ -2,7 +2,9 @@ import imaplib
 import email
 from email.header import decode_header
 import time
+import os
 import re
+import json
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog
@@ -32,8 +34,34 @@ def connect_imap(server, email_user, email_pass):
         print(f"Error connecting: {e}")
         return None
 
+
+# Function to save email information to JSON
+def save_email_info(email_data, json_file):
+    try:
+        # Check if the file exists to read existing data
+        if os.path.exists(json_file):
+            with open(json_file, "r") as f:
+                # Load existing data
+                try:
+                    data = json.load(f)
+                except json.JSONDecodeError:
+                    print("Error decoding JSON, starting fresh.")
+                    data = []  # Start with an empty list if there's a decode error
+        else:
+            # If file doesn't exist, create a new list
+            data = []
+
+        # Append the new email data
+        data.append(email_data)
+
+        # Write the updated list back to the JSON file
+        with open(json_file, "w") as f:
+            json.dump(data, f, indent=4)  # Indent for better readability
+    except Exception as e:
+        print(f"Error saving email info: {e}")
+
 # Function to check the inbox and download PDF attachments from unread emails
-def check_inbox(mail, re_dir):
+def check_inbox(mail, re_dir, json_file):
     try:
         mail.select("inbox")  # Select inbox
         status, messages = mail.search(None, '(UNSEEN)')  # Only unread emails
@@ -49,7 +77,21 @@ def check_inbox(mail, re_dir):
                         if isinstance(subject, bytes):
                             subject = subject.decode(encoding if encoding else "utf-8")
 
+                        # Get email date and sender
+                        date = msg.get("Date")
+                        sender, encoding = decode_header(msg["From"])[0]
+                        if isinstance(sender, bytes):
+                            sender = sender.decode(encoding if encoding else "utf-8")
+
                         print(f"Processing email: {subject}")
+
+                        # Save email info to JSON
+                        email_data = {
+                            "date": date,
+                            "sender": sender,
+                            "subject": subject
+                        }
+                        save_email_info(email_data, json_file)
 
                         # Get attachments if available
                         if msg.is_multipart():
@@ -84,10 +126,14 @@ if mail:
     # Select the folder where PDFs will be saved
     re_dir = select_folder()
 
+    # JSON file to save email information in the "data" folder
+    json_file = Path("data/email_info.json")
+    json_file.parent.mkdir(parents=True, exist_ok=True)  # Create 'data' folder if it doesn't exist
+
     # Loop to check for new emails every 30 seconds
     try:
         while True:
-            check_inbox(mail, re_dir)
+            check_inbox(mail, re_dir, json_file)
             print("Waiting 30 seconds for the next check...")
             time.sleep(30)
     except KeyboardInterrupt:

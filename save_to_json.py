@@ -1,141 +1,96 @@
-import win32com.client
-import pythoncom
-from pathlib import Path
+import imaplib
+import email
+from email.header import decode_header
+import time
 import re
-from email_utils import save_email_info  # Import the function to save email info
+from pathlib import Path
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog
 
-# Function to open a folder selection dialog and return the selected path
+# Function to select the folder where PDFs will be saved
 def select_folder():
     root = tk.Tk()
-    root.withdraw()  # Hide the root window
-    root.attributes('-topmost', True)  # Ensure the dialog is always on top
-    folder_selected = filedialog.askdirectory(title="Select Folder for Saving PDFs")
-    root.attributes('-topmost', False)  # Remove the topmost attribute
+    root.withdraw()  # Hide root window
+    folder_selected = filedialog.askdirectory(title="Select folder to save PDFs")
     if not folder_selected:
         print("No folder selected. Exiting.")
         exit()
     return Path(folder_selected)
 
-# Function to display a list of accounts and let the user select one
-def select_account(accounts):
-    def on_select():
-        selected_idx = listbox.curselection()
-        if selected_idx:
-            selected_account.set(accounts[selected_idx[0]].Name)
-            root.destroy()
+# Function to clean filenames by removing unsafe characters
+def sanitize_filename(filename):
+    return re.sub(r'[^0-9a-zA-Z\.]+', '', filename)
+
+# Function to connect to the IMAP server
+def connect_imap(server, email_user, email_pass):
+    try:
+        mail = imaplib.IMAP4_SSL(server, port=993)  # Specify port explicitly
+        mail.login(email_user, email_pass)  # Authenticate
+        print("Login successful!")
+        return mail
+    except imaplib.IMAP4.error as e:
+        print(f"Error connecting: {e}")
+        return None
+
+# Function to check the inbox and download PDF attachments from unread emails
+def check_inbox(mail, re_dir):
+    try:
+        mail.select("inbox")  # Select inbox
+        status, messages = mail.search(None, '(UNSEEN)')  # Only unread emails
+        mail_ids = messages[0].split()
+
+        if mail_ids:
+            for mail_id in mail_ids:
+                status, msg_data = mail.fetch(mail_id, "(RFC822)")
+                for response_part in msg_data:
+                    if isinstance(response_part, tuple):
+                        msg = email.message_from_bytes(response_part[1])
+                        subject, encoding = decode_header(msg["Subject"])[0]
+                        if isinstance(subject, bytes):
+                            subject = subject.decode(encoding if encoding else "utf-8")
+
+                        print(f"Processing email: {subject}")
+
+                        # Get attachments if available
+                        if msg.is_multipart():
+                            for part in msg.walk():
+                                content_disposition = str(part.get("Content-Disposition"))
+                                if "attachment" in content_disposition:
+                                    filename = part.get_filename()
+                                    if filename and filename.lower().endswith('.pdf'):
+                                        filename = sanitize_filename(filename)
+                                        filepath = re_dir / filename
+                                        with open(filepath, "wb") as f:
+                                            f.write(part.get_payload(decode=True))
+                                        print(f"PDF saved: {filename}")
+                        else:
+                            print(f"No attachments in email: {subject}")
+
         else:
-            messagebox.showerror("Error", "No account selected.")
+            print("No new emails.")
+    
+    except Exception as e:
+        print(f"Error checking inbox: {e}")
 
-    root = tk.Tk()
-    root.title("Select Email Account")
-    root.attributes('-topmost', True)  # Ensure the dialog is always on top
+# IONOS IMAP server settings
+IMAP_SERVER = "imap.ionos.es"  # IONOS IMAP server
+EMAIL_USER = "domus@asb-ibv.com"  # Your IONOS email
+EMAIL_PASS = "!asb-ibv.com!"  # Your email password
 
-    tk.Label(root, text="Select an email account:").pack(pady=10)
+# Connect to IONOS IMAP
+mail = connect_imap(IMAP_SERVER, EMAIL_USER, EMAIL_PASS)
 
-    listbox = tk.Listbox(root, width=50, height=10)
-    listbox.pack(pady=10)
+if mail:
+    # Select the folder where PDFs will be saved
+    re_dir = select_folder()
 
-    for account in accounts:
-        listbox.insert(tk.END, account.Name)
-
-    selected_account = tk.StringVar()
-    tk.Button(root, text="Select", command=on_select).pack(pady=10)
-
-    root.mainloop()
-
-    return selected_account.get()
-
-# Class to handle the new mail event
-class NewMailHandler:
-    def OnItemAdd(self, item):
-        try:
-            # Check if the item is a mail item (Class 43 is olMailItem)
-            if item.Class == 43:
-                attachments = item.Attachments
-
-                # Save email info to JSON
-                email_info = {
-                    "date": item.ReceivedTime.strftime("%Y-%m-%d %H:%M:%S"),
-                    "sender": item.SenderEmailAddress,
-                    "subject": item.Subject
-                }
-                save_email_info(email_info)
-
-                # Process attachments
-                for attachment in attachments:
-                    # Only save PDFs
-                    if attachment.FileName.lower().endswith('.pdf'):
-                        # Create a safe filename
-                        filename = re.sub(r'[^0-9a-zA-Z\.]+', '', attachment.FileName)
-
-                        # Save the PDF to the folder
-                        attachment.SaveAsFile(re_dir / filename)
-                        print(f"PDF saved: {filename}")
-
-        except Exception as e:
-            print(f"Error processing new email: {e}")
-
-# Connect to Outlook
-outlook = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
-
-# Get the list of all accounts in Outlook
-accounts = outlook.Folders
-
-# Filter out folders that start with "Öffentliche Ordner" to remove duplicates
-filtered_accounts = [account for account in accounts if not account.Name.startswith("Öffentliche Ordner")]
-
-# Let the user select an account via UI
-selected_account_name = select_account(filtered_accounts)
-
-# Find the selected account from the filtered accounts
-selected_account = next((account for account in filtered_accounts if account.Name == selected_account_name), None)
-
-if selected_account is None:
-    print(f"Account '{selected_account_name}' not found. Exiting.")
-    exit()
-
-# Print the selected account for debugging
-print(f"Selected account: {selected_account.Name}")
-
-# Function to find folder by name, including subfolders
-def find_folder(folders, name):
-    """Find a folder by name, including subfolders."""
-    for folder in folders:
-        if folder.Name.lower() == name.lower():
-            return folder
-        # Recursively search in subfolders
-        if folder.Folders.Count > 0:
-            found_folder = find_folder(folder.Folders, name)
-            if found_folder:
-                return found_folder
-    return None
-
-# Default folder names
-inbox_folder_name = "Posteingang"  # For German
-# inbox_folder_name = "Inbox"  # Uncomment for English
-
-# Find the Inbox folder
-selected_folder = find_folder(selected_account.Folders, inbox_folder_name)
-
-if selected_folder:
-    print(f"Selected folder: {selected_folder.Name}")
-else:
-    print(f"Folder '{inbox_folder_name}' not found. Exiting.")
-    exit()
-
-# Let the user select the output folder for PDFs
-re_dir = select_folder()
-
-# Set up the event handler for the selected folder
-items = selected_folder.Items
-event_handler = win32com.client.WithEvents(items, NewMailHandler)
-
-# Keep the script running to listen for new emails
-print(f"Monitoring {selected_folder.Name} for new emails...")
-
-# Infinite loop to keep the script running
-while True:
-    # Process any waiting COM events
-    pythoncom.PumpWaitingMessages()
+    # Loop to check for new emails every 30 seconds
+    try:
+        while True:
+            check_inbox(mail, re_dir)
+            print("Waiting 30 seconds for the next check...")
+            time.sleep(30)
+    except KeyboardInterrupt:
+        print("Exiting script.")
+    finally:
+        mail.logout()  # Ensure proper logout
